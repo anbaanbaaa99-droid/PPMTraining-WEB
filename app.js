@@ -1,5 +1,5 @@
 const API =
-"https://script.google.com/macros/s/URL_APPSCRIPT_ANDA/exec";
+"https://script.google.com/macros/s/AKfycbxbaop9HbasKeMj1d9CqG9jjTqJRq68Gv3f-8zaVobcbv6pDW3LRu4IJpFezpO2nFRi/exec";
 
 
 // Load daftar peserta
