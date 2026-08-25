@@ -1,0 +1,79 @@
+*{
+box-sizing:border-box;
+}
+
+body{
+font-family:Arial, sans-serif;
+background:#f5f5f5;
+margin:0;
+}
+
+.container{
+max-width:600px;
+margin:30px auto;
+padding:20px;
+}
+
+header{
+text-align:center;
+}
+
+header h1{
+color:#b4008c;
+}
+
+.search-card,
+.card{
+background:white;
+padding:20px;
+border-radius:16px;
+box-shadow:0 5px 20px rgba(0,0,0,.1);
+margin-top:20px;
+}
+
+input{
+width:100%;
+padding:14px;
+border:1px solid #ddd;
+border-radius:10px;
+font-size:16px;
+}
+
+button{
+width:100%;
+padding:14px;
+margin-top:12px;
+border:none;
+border-radius:10px;
+background:#b4008c;
+color:white;
+font-weight:bold;
+cursor:pointer;
+}
+
+.profile-title{
+color:#b4008c;
+}
+
+.info{
+line-height:1.8;
+}
+
+.module{
+border:1px solid #ddd;
+padding:15px;
+border-radius:12px;
+margin-top:12px;
+background:#fafafa;
+}
+
+.module a{
+display:block;
+margin-top:10px;
+background:#b4008c;
+color:white;
+text-decoration:none;
+text-align:center;
+padding:10px;
+border-radius:8px;
+}
