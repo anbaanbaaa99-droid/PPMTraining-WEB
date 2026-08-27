@@ -1,39 +1,49 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AEON PPM Training</title>
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#a50064">
+  <title>Learning Journey - AEON Alam Sutera</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <main class="page-shell">
+    <div class="workspace">
+      <aside class="login-panel" aria-label="Login Learning Journey">
+        <div class="login-card">
+          <div class="brand-mark" aria-hidden="true">AEON</div>
+          <p class="eyebrow">LEARNING JOURNEY</p>
+          <h1>AEON ALAM SUTERA</h1>
+          <p class="hero-copy">Masukkan NIK untuk melihat apa yang harus dikerjakan.</p>
 
-<div class="container">
+          <label for="search">Input NIK</label>
+          <input
+            id="search"
+            list="participants"
+            inputmode="text"
+            autocomplete="off"
+            placeholder="Contoh: 2310179"
+            aria-describedby="search-help"
+          >
+          <datalist id="participants"></datalist>
+          <button id="search-button" type="button">LOGIN</button>
+          <p id="search-help" class="helper-text">Bisa juga ketik nama lalu pilih dari saran.</p>
+        </div>
+        <div id="status" class="status" role="status" aria-live="polite"></div>
+      </aside>
 
-<header>
-<h1>AEON PPM TRAINING</h1>
-<p>Training Module Lookup System</p>
-</header>
+      <section id="result" class="result-panel" aria-live="polite">
+        <div class="welcome-card">
+          <span class="welcome-icon" aria-hidden="true">→</span>
+          <h2>Data training akan tampil di sini</h2>
+          <p>Masukkan NIK peserta di sebelah kiri untuk membuka Learning Journey.</p>
+        </div>
+      </section>
+    </div>
+  </main>
 
-<section class="search-card">
-
-<input id="search"
-list="participants"
-placeholder="Cari Nama atau NIK">
-
-<datalist id="participants"></datalist>
-
-<button onclick="searchPPM()">CARI DATA</button>
-
-</section>
-
-
-<div id="result"></div>
-
-
-</div>
-
-<script src="app.js"></script>
-
+  <script src="catalog.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
