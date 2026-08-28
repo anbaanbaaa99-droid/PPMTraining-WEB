@@ -9,6 +9,8 @@ let progressBackendReady = false;
 let lastFiltered = [];
 let hrToken = "";
 let dashboardInitialized = false;
+let hrSessionVerified = false;
+let participantSource = "";
 
 const HR_SESSION_KEY = "ppm_hr_session_v1";
 
@@ -49,7 +51,7 @@ const dialogCloseEl = document.getElementById("dialog-close");
 const detailNameEl = document.getElementById("detail-name");
 const detailContentEl = document.getElementById("detail-content");
 
-const HR_FRONTEND_VERSION = "20260829-loginfix2";
+const HR_FRONTEND_VERSION = "20260829-loginfix3";
 
 initializeHRPage();
 
@@ -110,6 +112,7 @@ async function bootHR() {
   }
 
   hrToken = saved.token;
+  hrSessionVerified = true;
   try {
     await enterDashboard({ allowParticipantFallback: true });
   } catch (error) {
@@ -167,7 +170,13 @@ async function handleHRLogin(event) {
     hrToken = String(payload.data.token);
     saveHRSession({ token: hrToken, expiresAt: payload.data.expiresAt || "" });
 
-    setLoginStatus("Login berhasil. Memuat data peserta...");
+    setLoginStatus("Login diterima. Memeriksa token sesi...");
+    hrSessionVerified = await validateHRSession(hrToken);
+    if (!hrSessionVerified) {
+      throw new Error("Login berhasil, tetapi token yang diterbitkan backend langsung ditolak oleh hrValidate. Pastikan HRAuth.gs yang dideploy adalah versi terbaru dan PPM_HR_TOKEN_SECRET tidak berubah.");
+    }
+
+    setLoginStatus("Token valid. Memuat data peserta...");
     await enterDashboard({ allowParticipantFallback: true });
 
     // Password baru dihapus setelah dashboard benar-benar berhasil dibuka.
@@ -264,24 +273,28 @@ async function loadHRParticipants(allowFallback = false) {
     );
 
     if (payload?.code === "UNAUTHORIZED") {
-      throw new Error("Sesi HR ditolak saat memuat daftar peserta.");
+      const unauthorized = new Error("Sesi HR ditolak saat memuat daftar peserta.");
+      unauthorized.code = "UNAUTHORIZED";
+      throw unauthorized;
     }
 
     if (!payload?.status || !Array.isArray(payload?.data)) {
       throw new Error(payload?.message || "Endpoint hrParticipants tidak mengembalikan array peserta.");
     }
 
+    participantSource = "hrParticipants";
     return normalizeHRParticipants(payload.data);
   } catch (error) {
     hrError = error;
     console.warn("hrParticipants gagal:", error);
   }
 
-  if (!allowFallback) throw hrError;
+  if (!allowFallback || hrError?.code === "UNAUTHORIZED") throw hrError;
 
-  // Fallback aman untuk daftar peserta saja. Endpoint `participants` memang sudah
-  // publik di Code.gs. Data progress tetap memakai token HR melalui progressAll.
-  setLoginStatus("Login berhasil. Endpoint HR peserta bermasalah, mencoba sumber peserta utama...");
+  // Fallback hanya dipakai bila sesi sudah tervalidasi dan masalah hrParticipants
+  // bukan UNAUTHORIZED. Ini mencegah dashboard dibuka dengan token yang sebenarnya invalid.
+  if (!hrSessionVerified) throw hrError;
+  setLoginStatus("Sesi valid. Endpoint HR peserta bermasalah, mencoba sumber peserta utama...");
 
   try {
     const payload = await fetchJsonWithTimeout(
@@ -295,6 +308,7 @@ async function loadHRParticipants(allowFallback = false) {
     }
 
     console.warn("Dashboard menggunakan fallback endpoint participants karena hrParticipants gagal.");
+    participantSource = "participants-fallback";
     return normalizeHRParticipants(payload.data);
   } catch (fallbackError) {
     const first = String(hrError?.message || hrError || "hrParticipants gagal");
@@ -352,11 +366,15 @@ function logoutHR() {
   location.reload();
 }
 
-function handleUnauthorized() {
-  clearHRSession();
-  hrToken = "";
-  alert("Sesi HR sudah berakhir. Silakan login kembali.");
-  location.reload();
+function handleUnauthorized(context = "endpoint HR") {
+  // Jangan reload otomatis. hrLogin/hrValidate sudah membuktikan sesi saat dashboard dibuka.
+  // Jika endpoint tertentu menolak token, tampilkan diagnosis tanpa menghancurkan state UI.
+  progressBackendReady = false;
+  if (backendBannerEl) {
+    backendBannerEl.hidden = false;
+    backendBannerEl.textContent = `Dashboard tetap terbuka, tetapi ${context} menolak token HR. Cek deployment backend (HRAuth.gs + Progress.gs) dan pastikan semuanya berada pada versi deployment yang sama.`;
+  }
+  console.error(`${context} mengembalikan UNAUTHORIZED untuk sesi HR yang sebelumnya tervalidasi.`);
 }
 
 function readSavedSession() {
@@ -386,7 +404,10 @@ async function loadAllProgress() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!payload?.status || !Array.isArray(payload?.data)) {
-      if (payload?.code === "UNAUTHORIZED") return handleUnauthorized();
+      if (payload?.code === "UNAUTHORIZED") {
+        handleUnauthorized("progressAll");
+        return;
+      }
       throw new Error(payload?.message || "Endpoint progressAll belum tersedia");
     }
 
@@ -404,6 +425,7 @@ async function loadAllProgress() {
     console.warn(error);
     progressBackendReady = false;
     backendBannerEl.hidden = false;
+    backendBannerEl.textContent = `Dashboard terbuka, tetapi progress belum dapat dimuat: ${String(error?.message || error)}`;
   } finally {
     refreshEl.disabled = false;
     refreshEl.textContent = "Refresh Progress";
