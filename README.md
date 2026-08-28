@@ -1,45 +1,59 @@
-# AEON PPM Training System + HR Monitoring
+# AEON PPM Training System + HR Monitoring — Stage 3
 
-Frontend GitHub Pages untuk Learning Journey AEON Alam Sutera dan dashboard monitoring HR.
+Satu repository GitHub Pages untuk Learning Journey peserta dan HR Monitoring AEON Alam Sutera.
 
 ## Halaman
-- `index.html` — Learning Journey peserta. Peserta mencari NIK/nama dan melihat Basic, judul materi, Link Post Test, dan Modul.
-- `hr.html` — Dashboard monitoring HR. Default menampilkan peserta kategori PPM.
 
-## Fitur HR Monitoring
-- Ringkasan jumlah peserta yang sedang tampil.
-- Filter kategori, section, current level, dan Basic.
-- Pencarian berdasarkan NIK atau nama.
-- Detail peserta melalui endpoint Apps Script `action=search`.
-- Detail assignment menampilkan Post Test dan Modul jika backend mengirim data modul.
-- Tombol **Buka sebagai peserta** untuk mengecek Learning Journey NIK tertentu.
-- Export hasil filter ke CSV.
-- Progress/checklist belum diaktifkan karena belum ada sumber data completion yang persisten.
+- `index.html` — Learning Journey peserta.
+- `hr.html` — HR Monitoring dengan login.
 
-## Sumber data
-- `hr-data.js` adalah snapshot master peserta dari sheet `Daftar Peserta` pada workbook `Penugasan PPM-Magang-KI Aeon Alam Sutera 2026.xlsx`.
-- `catalog.js` adalah katalog materi/Post Test/Modul dari workbook yang sama.
-- Detail assignment per peserta tetap mencoba mengambil data terbaru dari Apps Script.
+## Stage 3
 
-## Deploy
-1. Upload seluruh isi folder/ZIP ke repository GitHub Pages yang sama.
-2. Pastikan file berikut berada di level yang sama:
-   - `index.html`
-   - `style.css`
-   - `app.js`
-   - `catalog.js`
-   - `hr.html`
-   - `hr.css`
-   - `hr.js`
-   - `hr-data.js`
-3. Peserta membuka `index.html`.
-4. HR membuka `hr.html`.
-5. Jika URL Apps Script berubah, ganti konstanta API pada `app.js` dan `hr.js`.
+### HR Login
+- Dashboard HR tidak tampil sebelum autentikasi.
+- Username/password diverifikasi oleh Google Apps Script, bukan JavaScript GitHub.
+- Password dikirim menggunakan POST, bukan query URL.
+- Session token bertanda tangan berlaku 8 jam.
+- Token disimpan di `sessionStorage`.
+- Tombol `Keluar` menghapus sesi.
+- Maksimal 5 percobaan login gagal sebelum lock sementara sekitar 15 menit.
 
-## Catatan keamanan penting
-`hr.html` saat ini adalah dashboard frontend dan **belum memiliki autentikasi HR yang aman**. Jangan menganggap URL tersembunyi atau password yang ditulis di JavaScript sebagai pengamanan. Sebelum dipakai untuk produksi/internal data sensitif, tambahkan autentikasi di backend (misalnya Google Apps Script dengan kontrol akun/domain, Firebase Auth, atau sistem login server-side) dan batasi endpoint agar data master peserta tidak dapat diambil publik.
+### HR Data
+- `hr-data.js` tidak lagi digunakan.
+- Daftar peserta HR diambil dari sheet `Daftar Peserta` setelah token tervalidasi.
+- Endpoint `progressAll` juga membutuhkan token HR.
 
-## Tahap progress berikutnya
-Untuk checklist yang dapat dimonitor HR, status harus disimpan pada backend/Google Sheet, misalnya:
-`NIK + ID materi + completed + completedAt`.
-Setelah sumber data completion tersedia, dashboard dapat ditambah status `Belum Mulai / On Progress / Completed`, persentase progress, overdue, dan rekap per section.
+### Progress
+- Checklist peserta tetap tersimpan di sheet `Progress PPM`.
+- HR melihat Completed / On Progress / Belum Mulai, progress bar, detail materi, dan Export CSV.
+
+### Credit
+Credit kecil `Created by FINH` ditambahkan pada Learning Journey dan HR Monitoring.
+
+## File frontend untuk GitHub
+
+```text
+index.html
+style.css
+app.js
+catalog.js
+hr.html
+hr.css
+hr.js
+```
+
+> Hapus `hr-data.js` lama dari repository.
+
+## Backend Apps Script
+
+Folder `backend/` berisi:
+
+- `apps-script-progress-addon.gs` → copy sebagai `Progress.gs`
+- `apps-script-hr-auth-addon.gs` → copy sebagai `HRAuth.gs`
+- `BACKEND-INSTALL.md` → instruksi pemasangan
+
+Lihat `backend/BACKEND-INSTALL.md` sebelum deploy.
+
+## Catatan
+
+Login HR adalah autentikasi server-side untuk dashboard. Learning Journey peserta masih menggunakan endpoint peserta publik berbasis NIK, jadi ini belum merupakan sistem IAM/SSO penuh.

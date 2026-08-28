@@ -356,3 +356,55 @@ button{cursor:pointer}
   .task-row{grid-template-columns:1fr}
   .task-title,.task-action{grid-column:1}
 }
+
+/* ===== Progress checklist ===== */
+.progress-panel{
+  margin:14px 26px 0;
+  padding:14px 16px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:linear-gradient(180deg,#fff,#fcfafb);
+}
+.progress-copy{display:flex;align-items:flex-end;justify-content:space-between;gap:16px}
+.progress-eyebrow{display:block;margin-bottom:3px;color:var(--aeon);font-size:.68rem;font-weight:900;letter-spacing:.09em}
+.progress-copy strong{font-size:.94rem}
+.progress-percent{color:var(--aeon);font-size:1.1rem;font-weight:900}
+.progress-track{height:9px;margin-top:10px;border-radius:999px;background:#eee8ec;overflow:hidden}
+.progress-track span{display:block;height:100%;border-radius:inherit;background:var(--aeon);transition:width .3s ease}
+.progress-note{margin:8px 0 0;color:var(--muted);font-size:.76rem;line-height:1.45}
+.task-header,.task-row{grid-template-columns:minmax(0,1.65fr) minmax(130px,.58fr) minmax(130px,.58fr) minmax(92px,.36fr)}
+.completion-control{display:flex;align-items:center;justify-content:center;gap:7px;min-height:41px;padding:7px 8px;border:1px solid #ddd4da;border-radius:10px;background:#fff;cursor:pointer;user-select:none}
+.completion-control input{position:absolute;opacity:0;pointer-events:none}
+.check-box{display:grid;place-items:center;width:25px;height:25px;border:2px solid #b8afb5;border-radius:7px;background:#fff;color:transparent;font-size:.88rem;font-weight:950;transition:.15s}
+.check-text{font-size:.76rem;font-weight:850;color:#625a60}
+.task-checkbox:checked + .check-box{border-color:#16843f;background:#16843f;color:#fff}
+.task-checkbox:disabled ~ .check-text{opacity:.55}
+.completion-control:has(.task-checkbox:disabled){cursor:not-allowed;opacity:.65}
+.task-row.completed{border-color:rgba(22,132,63,.25);background:#f8fcf9}
+.task-row.completed .task-title{color:#3f664c}
+.task-row.saving{opacity:.62;pointer-events:none}
+@media (max-width:700px){
+  .progress-panel{margin:12px 18px 0}
+  .task-row{grid-template-columns:1fr 1fr}
+  .completion-control{grid-column:1/-1}
+}
+@media (max-width:430px){
+  .task-row{grid-template-columns:1fr}
+  .completion-control{grid-column:1}
+}
+
+/* ===== Site credit ===== */
+.site-credit{
+  width:max-content;
+  max-width:100%;
+  margin:22px auto 0;
+  padding:7px 11px;
+  border-top:1px solid rgba(165,0,100,.14);
+  color:#8b8187;
+  font-size:.68rem;
+  font-weight:650;
+  letter-spacing:.075em;
+  text-transform:uppercase;
+}
+.site-credit strong{color:var(--aeon);font-weight:900;letter-spacing:.11em}
+.compact-credit{margin:0;border-top:0;padding:0;font-size:.65rem}

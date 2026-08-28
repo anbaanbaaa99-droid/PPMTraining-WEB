@@ -4,12 +4,44 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#a50064">
+  <meta name="robots" content="noindex,nofollow,noarchive">
   <title>HR Monitoring PPM - AEON Alam Sutera</title>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="hr.css">
 </head>
 <body class="hr-page">
-  <main class="hr-shell">
+  <section id="hr-login-gate" class="hr-login-gate" aria-label="Login HR Monitoring">
+    <div class="hr-login-card">
+      <div class="hr-login-brand-row">
+        <span class="brand-mark hr-brand" aria-hidden="true">AEON</span>
+        <span class="internal-badge">RESTRICTED ACCESS</span>
+      </div>
+      <p class="eyebrow">LEARNING JOURNEY MONITORING</p>
+      <h1>HR Monitoring</h1>
+      <p class="hr-login-copy">Masuk menggunakan akun HR untuk membuka dashboard monitoring PPM.</p>
+
+      <form id="hr-login-form" class="hr-login-form" novalidate>
+        <label for="hr-username">Username</label>
+        <input id="hr-username" name="username" type="text" autocomplete="username" required placeholder="Username HR">
+
+        <label for="hr-password">Password</label>
+        <div class="password-field">
+          <input id="hr-password" name="password" type="password" autocomplete="current-password" required placeholder="Password">
+          <button id="toggle-password" class="password-toggle" type="button" aria-label="Tampilkan password">Lihat</button>
+        </div>
+
+        <button id="hr-login-button" class="primary-button hr-login-button" type="submit">Masuk ke Dashboard</button>
+        <p id="hr-login-status" class="hr-login-status" role="status" aria-live="polite"></p>
+      </form>
+
+      <div class="hr-login-bottom">
+        <a href="index.html" class="back-to-journey">← Kembali ke Learning Journey</a>
+        <div class="site-credit compact-credit">Created by <strong>FINH</strong></div>
+      </div>
+    </div>
+  </section>
+
+  <main id="hr-app" class="hr-shell" hidden>
     <header class="hr-header">
       <div>
         <div class="hr-brand-row">
@@ -18,103 +50,62 @@
         </div>
         <p class="eyebrow">LEARNING JOURNEY MONITORING</p>
         <h1>Monitoring PPM</h1>
-        <p class="hr-subtitle">Pantau penugasan peserta berdasarkan section, level, dan Basic yang harus dikerjakan.</p>
+        <p class="hr-subtitle">Pantau assignment dan checklist penyelesaian peserta berdasarkan section, level, dan Basic.</p>
       </div>
       <div class="header-actions">
         <a class="secondary-button" href="index.html">Buka Learning Journey</a>
+        <button id="refresh-progress" class="secondary-button" type="button">Refresh Progress</button>
         <button id="export-button" class="primary-button" type="button">Export CSV</button>
+        <button id="hr-logout" class="logout-button" type="button">Keluar</button>
       </div>
     </header>
 
-    <section class="summary-grid" aria-label="Ringkasan monitoring">
-      <article class="summary-card">
-        <span class="summary-label">Peserta terlihat</span>
-        <strong id="summary-total">0</strong>
-        <small id="summary-total-note">dari 0 peserta</small>
-      </article>
-      <article class="summary-card">
-        <span class="summary-label">Section</span>
-        <strong id="summary-sections">0</strong>
-        <small>section pada filter aktif</small>
-      </article>
-      <article class="summary-card">
-        <span class="summary-label">Basic 1</span>
-        <strong id="summary-basic1">0</strong>
-        <small>peserta</small>
-      </article>
-      <article class="summary-card">
-        <span class="summary-label">Basic 2 / 3</span>
-        <strong id="summary-basic23">0</strong>
-        <small>peserta</small>
-      </article>
+    <div id="progress-backend-banner" class="backend-banner" hidden>
+      Progress backend belum terhubung. Data peserta dan link training tetap tampil, tetapi status checklist belum dapat dimonitor.
+    </div>
+
+    <section class="summary-grid progress-summary-grid" aria-label="Ringkasan monitoring">
+      <article class="summary-card"><span class="summary-label">Peserta terlihat</span><strong id="summary-total">0</strong><small id="summary-total-note">dari 0 peserta</small></article>
+      <article class="summary-card"><span class="summary-label">Completed</span><strong id="summary-completed">0</strong><small>100% materi selesai</small></article>
+      <article class="summary-card"><span class="summary-label">On Progress</span><strong id="summary-inprogress">0</strong><small>sudah mulai</small></article>
+      <article class="summary-card"><span class="summary-label">Belum Mulai</span><strong id="summary-notstarted">0</strong><small>0% progress</small></article>
+      <article class="summary-card"><span class="summary-label">Rata-rata Progress</span><strong id="summary-average">0%</strong><small id="summary-section-note">0 section</small></article>
     </section>
 
     <section class="monitor-card">
       <div class="filters-heading">
-        <div>
-          <h2>Daftar Peserta</h2>
-          <p>Default menampilkan kategori PPM. Gunakan filter untuk monitoring kelompok tertentu.</p>
-        </div>
+        <div><h2>Daftar Peserta</h2><p>Default menampilkan kategori PPM. Gunakan filter untuk melihat kelompok dan status progress tertentu.</p></div>
         <span id="result-count" class="count-pill">0 peserta</span>
       </div>
 
-      <div class="filters-grid">
-        <label class="filter-field filter-search">
-          <span>Cari peserta</span>
-          <input id="hr-search" type="search" autocomplete="off" placeholder="NIK atau nama...">
-        </label>
-        <label class="filter-field">
-          <span>Kategori</span>
-          <select id="filter-category"></select>
-        </label>
-        <label class="filter-field">
-          <span>Section</span>
-          <select id="filter-section"></select>
-        </label>
-        <label class="filter-field">
-          <span>Level</span>
-          <select id="filter-level"></select>
-        </label>
-        <label class="filter-field">
-          <span>Basic</span>
-          <select id="filter-basic"></select>
-        </label>
+      <div class="filters-grid progress-filters-grid">
+        <label class="filter-field filter-search"><span>Cari peserta</span><input id="hr-search" type="search" autocomplete="off" placeholder="NIK atau nama..."></label>
+        <label class="filter-field"><span>Kategori</span><select id="filter-category"></select></label>
+        <label class="filter-field"><span>Section</span><select id="filter-section"></select></label>
+        <label class="filter-field"><span>Level</span><select id="filter-level"></select></label>
+        <label class="filter-field"><span>Basic</span><select id="filter-basic"></select></label>
+        <label class="filter-field"><span>Status</span><select id="filter-status"><option value="">Semua status</option><option value="Completed">Completed</option><option value="On Progress">On Progress</option><option value="Belum Mulai">Belum Mulai</option></select></label>
         <button id="reset-filter" class="ghost-button" type="button">Reset Filter</button>
       </div>
 
       <div class="table-wrap">
-        <table class="monitor-table">
-          <thead>
-            <tr>
-              <th>NIK</th>
-              <th>Nama</th>
-              <th>Section</th>
-              <th>Kategori</th>
-              <th>Current Level</th>
-              <th>Yang Dikerjakan</th>
-              <th class="action-col">Detail</th>
-            </tr>
-          </thead>
+        <table class="monitor-table progress-table">
+          <thead><tr><th>NIK</th><th>Nama</th><th>Section</th><th>Kategori</th><th>Current Level</th><th>Yang Dikerjakan</th><th>Progress</th><th>Status</th><th class="action-col">Detail</th></tr></thead>
           <tbody id="monitor-body"></tbody>
         </table>
       </div>
 
-      <div id="monitor-empty" class="monitor-empty" hidden>
-        <strong>Data tidak ditemukan.</strong>
-        <span>Ubah kata pencarian atau filter yang digunakan.</span>
-      </div>
+      <div id="monitor-empty" class="monitor-empty" hidden><strong>Data tidak ditemukan.</strong><span>Ubah kata pencarian atau filter yang digunakan.</span></div>
     </section>
 
-    <p class="data-note">Dashboard ini menampilkan penugasan, belum status penyelesaian. Progress checklist dapat ditambahkan setelah sumber data completion tersedia.</p>
+    <p class="data-note">Checklist bersifat self-reported oleh peserta. Untuk status kelulusan Post Test yang tervalidasi, sumber hasil Post Test perlu diintegrasikan terpisah.</p>
+    <footer class="site-credit">Created by <strong>FINH</strong></footer>
   </main>
 
   <dialog id="detail-dialog" class="detail-dialog">
     <div class="dialog-shell">
       <div class="dialog-head">
-        <div>
-          <span class="dialog-kicker">DETAIL PENUGASAN</span>
-          <h2 id="detail-name">Peserta</h2>
-        </div>
+        <div><span class="dialog-kicker">DETAIL PENUGASAN & PROGRESS</span><h2 id="detail-name">Peserta</h2></div>
         <button id="dialog-close" class="dialog-close" type="button" aria-label="Tutup">×</button>
       </div>
       <div id="detail-content" class="detail-content"></div>
@@ -122,7 +113,6 @@
   </dialog>
 
   <script src="catalog.js"></script>
-  <script src="hr-data.js"></script>
   <script src="hr.js"></script>
 </body>
 </html>
