@@ -51,7 +51,7 @@ const dialogCloseEl = document.getElementById("dialog-close");
 const detailNameEl = document.getElementById("detail-name");
 const detailContentEl = document.getElementById("detail-content");
 
-const HR_FRONTEND_VERSION = "20260829-loginfix3";
+const HR_FRONTEND_VERSION = "20260829-hrfinal1";
 
 initializeHRPage();
 
@@ -102,25 +102,20 @@ async function bootHR() {
     return;
   }
 
+  hrToken = String(saved.token || "");
   setLoginStatus("Memeriksa sesi HR...");
-  const valid = await validateHRSession(saved.token);
+  const valid = await validateHRSession(hrToken);
   if (!valid) {
     clearHRSession();
     hrToken = "";
+    hrSessionVerified = false;
     showLogin("Sesi telah berakhir. Silakan login kembali.", true);
     return;
   }
 
-  hrToken = saved.token;
   hrSessionVerified = true;
-  try {
-    await enterDashboard({ allowParticipantFallback: true });
-  } catch (error) {
-    console.warn("Sesi valid tetapi dashboard gagal dimuat:", error);
-    clearHRSession();
-    hrToken = "";
-    showLogin(`Sesi valid, tetapi data dashboard gagal dimuat: ${formatLoginError(error)}`, true);
-  }
+  openDashboardShell();
+  await hydrateDashboardAfterLogin();
 }
 
 async function handleHRLogin(event) {
@@ -138,10 +133,7 @@ async function handleHRLogin(event) {
   loginButtonEl.textContent = "Memeriksa...";
   setLoginStatus("Menghubungi server HR...");
 
-  let loginAccepted = false;
-
   try {
-    // FormData menjaga POST sebagai simple browser request dan cocok dengan e.parameter Apps Script.
     const form = new FormData();
     form.append("action", "hrLogin");
     form.append("username", username);
@@ -166,39 +158,57 @@ async function handleHRLogin(event) {
       throw new Error(serverMessage);
     }
 
-    loginAccepted = true;
+    // Token baru saja diterbitkan oleh backend yang menerima credential HR.
+    // Jangan blokir login dengan request hrValidate kedua yang redundan dan rawan gagal redirect/network.
     hrToken = String(payload.data.token);
+    hrSessionVerified = true;
     saveHRSession({ token: hrToken, expiresAt: payload.data.expiresAt || "" });
 
-    setLoginStatus("Login diterima. Memeriksa token sesi...");
-    hrSessionVerified = await validateHRSession(hrToken);
-    if (!hrSessionVerified) {
-      throw new Error("Login berhasil, tetapi token yang diterbitkan backend langsung ditolak oleh hrValidate. Pastikan HRAuth.gs yang dideploy adalah versi terbaru dan PPM_HR_TOKEN_SECRET tidak berubah.");
-    }
-
-    setLoginStatus("Token valid. Memuat data peserta...");
-    await enterDashboard({ allowParticipantFallback: true });
-
-    // Password baru dihapus setelah dashboard benar-benar berhasil dibuka.
+    setLoginStatus("Login berhasil. Membuka dashboard...");
+    openDashboardShell();
     passwordEl.value = "";
-  } catch (error) {
-    console.error("HR login/dashboard failed:", error);
 
-    if (loginAccepted) {
-      // Jangan menyimpan sesi setengah-jadi. Password sengaja tetap ada agar user
-      // tidak perlu mengetik ulang saat masalahnya ada di endpoint data peserta.
-      clearHRSession();
-      hrToken = "";
-      setLoginStatus(
-        `Login berhasil, tetapi dashboard gagal memuat data peserta: ${formatLoginError(error)}`,
-        true
-      );
-    } else {
-      setLoginStatus(formatLoginError(error), true);
-    }
+    // Data peserta/progress dimuat SETELAH shell HR terbuka.
+    // Kegagalan endpoint data tidak boleh mengembalikan user ke form login.
+    await hydrateDashboardAfterLogin();
+  } catch (error) {
+    console.error("HR login failed:", error);
+    setLoginStatus(formatLoginError(error), true);
   } finally {
     loginButtonEl.disabled = false;
     loginButtonEl.textContent = "Masuk ke Dashboard";
+  }
+}
+
+function openDashboardShell() {
+  loginGateEl.hidden = true;
+  hrAppEl.hidden = false;
+  setLoginStatus("");
+
+  if (backendBannerEl) {
+    backendBannerEl.hidden = false;
+    backendBannerEl.textContent = "Login HR berhasil. Memuat data dashboard...";
+  }
+}
+
+async function hydrateDashboardAfterLogin() {
+  try {
+    const data = await loadHRParticipants(true);
+    participants = data;
+    initializeDashboard();
+
+    if (backendBannerEl && participantSource === "participants-fallback") {
+      backendBannerEl.hidden = false;
+      backendBannerEl.textContent = "Akses HR berhasil. Daftar peserta sementara dibaca dari endpoint utama karena hrParticipants belum dapat digunakan.";
+    }
+  } catch (error) {
+    console.error("Dashboard HR terbuka tetapi peserta gagal dimuat:", error);
+    participants = [];
+    initializeDashboard();
+    if (backendBannerEl) {
+      backendBannerEl.hidden = false;
+      backendBannerEl.textContent = `Akses HR berhasil, tetapi daftar peserta gagal dimuat: ${formatLoginError(error)}`;
+    }
   }
 }
 
@@ -238,15 +248,6 @@ function formatLoginError(error) {
   return message || "Login gagal. Periksa akun HR dan deployment backend.";
 }
 
-async function enterDashboard(options = {}) {
-  setLoginStatus("Membuka dashboard...");
-  const data = await loadHRParticipants(Boolean(options.allowParticipantFallback));
-  participants = data;
-  loginGateEl.hidden = true;
-  hrAppEl.hidden = false;
-  setLoginStatus("");
-  initializeDashboard();
-}
 
 async function validateHRSession(token) {
   try {

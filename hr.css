@@ -1,3 +1,9 @@
+/* HTML hidden state must override component display rules. */
+.hr-login-gate[hidden],
+.hr-shell[hidden]{
+  display:none !important;
+}
+
 .hr-page{
   background:
     radial-gradient(circle at 100% 0,rgba(165,0,100,.08),transparent 28%),
