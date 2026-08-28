@@ -1,4 +1,4 @@
-const API = "https://docs.google.com/spreadsheets/d/1MaJ2jUwgcYrNYkmPqki-xUIMwH4LzdJiH800U9Tg-jA/edit?usp=sharing";
+const API = "https://script.google.com/macros/s/AKfycbxbaop9HbasKeMj1d9CqG9jjTqJRq68Gv3f-8zaVobcbv6pDW3LRu4IJpFezpO2nFRi/exec";
 
 const searchInput = document.getElementById("search");
 const searchButton = document.getElementById("search-button");
