@@ -49,11 +49,49 @@ const dialogCloseEl = document.getElementById("dialog-close");
 const detailNameEl = document.getElementById("detail-name");
 const detailContentEl = document.getElementById("detail-content");
 
-bootHR();
+const HR_FRONTEND_VERSION = "20260828-loginfix1";
 
-loginFormEl.addEventListener("submit", handleHRLogin);
-togglePasswordEl.addEventListener("click", togglePasswordVisibility);
-logoutEl.addEventListener("click", logoutHR);
+initializeHRPage();
+
+function initializeHRPage() {
+  const required = [
+    ["hr-login-gate", loginGateEl],
+    ["hr-app", hrAppEl],
+    ["hr-login-form", loginFormEl],
+    ["hr-username", usernameEl],
+    ["hr-password", passwordEl],
+    ["hr-login-button", loginButtonEl],
+    ["hr-login-status", loginStatusEl]
+  ];
+  const missing = required.filter(([, el]) => !el).map(([id]) => id);
+  if (missing.length) {
+    console.error("HR UI tidak lengkap:", missing);
+    document.body.insertAdjacentHTML(
+      "afterbegin",
+      `<div style="position:fixed;z-index:99999;left:12px;right:12px;top:12px;padding:12px;background:#fff0f3;border:1px solid #c43a55;border-radius:8px;color:#8f1f35;font:14px Arial">Frontend HR tidak lengkap. Elemen hilang: ${missing.join(", ")}</div>`
+    );
+    return;
+  }
+
+  loginFormEl.addEventListener("submit", handleHRLogin);
+  togglePasswordEl?.addEventListener("click", togglePasswordVisibility);
+  logoutEl?.addEventListener("click", logoutHR);
+
+  window.addEventListener("error", event => {
+    console.error("HR frontend error:", event.error || event.message);
+    if (!hrAppEl.hidden) return;
+    setLoginStatus(`JavaScript error: ${event.message || "unknown error"}`, true);
+  });
+  window.addEventListener("unhandledrejection", event => {
+    console.error("HR unhandled rejection:", event.reason);
+    if (!hrAppEl.hidden) return;
+    const msg = event.reason?.message || String(event.reason || "unknown error");
+    setLoginStatus(`Error: ${msg}`, true);
+  });
+
+  console.info(`HR frontend ${HR_FRONTEND_VERSION} loaded`);
+  bootHR();
+}
 
 async function bootHR() {
   const saved = readSavedSession();
@@ -77,6 +115,8 @@ async function bootHR() {
 
 async function handleHRLogin(event) {
   event.preventDefault();
+  event.stopPropagation();
+
   const username = usernameEl.value.trim();
   const password = passwordEl.value;
   if (!username || !password) {
@@ -86,33 +126,82 @@ async function handleHRLogin(event) {
 
   loginButtonEl.disabled = true;
   loginButtonEl.textContent = "Memeriksa...";
-  setLoginStatus("Memverifikasi akun HR...");
+  setLoginStatus("Menghubungi server HR...");
 
   try {
-    const form = new URLSearchParams({ action: "hrLogin", username, password });
-    const response = await fetch(HR_API, {
+    // FormData menjaga POST sebagai simple browser request dan cocok dengan e.parameter Apps Script.
+    const form = new FormData();
+    form.append("action", "hrLogin");
+    form.append("username", username);
+    form.append("password", password);
+
+    const payload = await fetchJsonWithTimeout(HR_API, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-      body: form.toString(),
-      cache: "no-store"
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const payload = await response.json();
+      body: form,
+      cache: "no-store",
+      redirect: "follow",
+      credentials: "omit"
+    }, 15000);
+
     if (!payload?.status || !payload?.data?.token) {
-      throw new Error(payload?.message || "Username atau password salah.");
+      const serverMessage = payload?.message || "Username atau password salah.";
+      if (/unsupported post action/i.test(serverMessage)) {
+        throw new Error("Backend Apps Script masih versi lama. Deploy ulang versi yang memiliki doPost() + handleHRAuthPost_().");
+      }
+      if (/belum dikonfigurasi/i.test(serverMessage)) {
+        throw new Error("HR login belum dikonfigurasi. Cek PPM_HR_USERNAME, PPM_HR_PASSWORD, dan PPM_HR_TOKEN_SECRET di Script Properties.");
+      }
+      throw new Error(serverMessage);
     }
 
     hrToken = String(payload.data.token);
     saveHRSession({ token: hrToken, expiresAt: payload.data.expiresAt || "" });
     passwordEl.value = "";
+    setLoginStatus("Login berhasil. Memuat data peserta...");
     await enterDashboard();
   } catch (error) {
-    console.error(error);
-    setLoginStatus(error?.message || "Login gagal. Periksa akun HR dan coba lagi.", true);
+    console.error("HR login failed:", error);
+    setLoginStatus(formatLoginError(error), true);
   } finally {
     loginButtonEl.disabled = false;
     loginButtonEl.textContent = "Masuk ke Dashboard";
   }
+}
+
+async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`Server HR merespons HTTP ${response.status}.`);
+    }
+    if (!text.trim()) {
+      throw new Error("Server HR mengembalikan respons kosong.");
+    }
+    try {
+      return JSON.parse(text);
+    } catch {
+      const preview = text.replace(/\s+/g, " ").slice(0, 120);
+      throw new Error(`Respons backend bukan JSON: ${preview}`);
+    }
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error("Koneksi ke backend HR timeout. Periksa deployment Apps Script dan jaringan.");
+    }
+    if (error instanceof TypeError && /fetch/i.test(error.message || "")) {
+      throw new Error("Browser tidak dapat membaca respons Apps Script (network/CORS/redirect). Pastikan Web App di-deploy untuk Anyone dan URL /exec di hr.js masih benar.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function formatLoginError(error) {
+  const message = String(error?.message || "Login gagal.").trim();
+  return message || "Login gagal. Periksa akun HR dan deployment backend.";
 }
 
 async function enterDashboard() {
@@ -126,16 +215,25 @@ async function enterDashboard() {
 }
 
 async function validateHRSession(token) {
-  const response = await fetch(`${HR_API}?action=hrValidate&token=${encodeURIComponent(token)}&_=${Date.now()}`, { cache: "no-store" });
-  if (!response.ok) return false;
-  const payload = await response.json();
-  return Boolean(payload?.status && payload?.data?.valid);
+  try {
+    const payload = await fetchJsonWithTimeout(
+      `${HR_API}?action=hrValidate&token=${encodeURIComponent(token)}&_=${Date.now()}`,
+      { cache: "no-store", credentials: "omit", redirect: "follow" },
+      12000
+    );
+    return Boolean(payload?.status && payload?.data?.valid);
+  } catch (error) {
+    console.warn("Validasi sesi HR gagal:", error);
+    return false;
+  }
 }
 
 async function loadHRParticipants() {
-  const response = await fetch(`${HR_API}?action=hrParticipants&token=${encodeURIComponent(hrToken)}&_=${Date.now()}`, { cache: "no-store" });
-  if (!response.ok) throw new Error(`Gagal mengambil data HR (HTTP ${response.status})`);
-  const payload = await response.json();
+  const payload = await fetchJsonWithTimeout(
+    `${HR_API}?action=hrParticipants&token=${encodeURIComponent(hrToken)}&_=${Date.now()}`,
+    { cache: "no-store", credentials: "omit", redirect: "follow" },
+    15000
+  );
   if (!payload?.status || !Array.isArray(payload?.data)) {
     if (payload?.code === "UNAUTHORIZED") handleUnauthorized();
     throw new Error(payload?.message || "Data peserta HR tidak tersedia.");
@@ -147,7 +245,8 @@ async function loadHRParticipants() {
     section: String(item?.section ?? "").trim(),
     level: String(item?.level ?? "").trim(),
     basic: String(item?.basic ?? "").trim(),
-    kategori: String(item?.kategori ?? "").trim() || "PPM"
+    kategori: String(item?.kategori ?? "").trim() || "PPM",
+    moduleSheet: String(item?.moduleSheet ?? item?.module_sheet ?? "").trim()
   }));
 }
 
@@ -281,7 +380,21 @@ function applyFilters() {
 }
 
 function getParticipantMetrics(item, modulesOverride = null) {
-  const modules = Array.isArray(modulesOverride) ? modulesOverride : getExpectedModules(item.section, item.basic);
+  let modules = [];
+  let mappingStatus = "resolved";
+
+  if (Array.isArray(modulesOverride)) {
+    modules = modulesOverride;
+  } else {
+    const resolution = resolveExpectedModules(item.section, item.basic, item.moduleSheet);
+    modules = resolution.modules;
+    mappingStatus = resolution.status;
+  }
+
+  if (mappingStatus === "ambiguous") {
+    return { modules: [], total: 0, completed: 0, percent: null, status: "Perlu Mapping" };
+  }
+
   const total = modules.length;
   if (!progressBackendReady) return { modules, total, completed: 0, percent: null, status: "Belum Aktif" };
 
@@ -291,6 +404,7 @@ function getParticipantMetrics(item, modulesOverride = null) {
     const key = createTaskKey(item.section, item.basic, module.title);
     if (records.get(key)?.completed) completed += 1;
   });
+
   const percent = total ? Math.round((completed / total) * 100) : 0;
   let status = "Belum Mulai";
   if (!total) status = "Belum Ada Materi";
@@ -385,21 +499,32 @@ function renderDetail(data, fallback, apiFailed = false) {
     section: data.section ?? data.Section ?? fallback.section,
     level: data.level ?? data.currentLevel ?? data["Current Level"] ?? fallback.level,
     basic: data.basic ?? data.requiredBasic ?? data["Basic yang harus dikerjakan"] ?? fallback.basic,
-    kategori: data.kategori ?? data.category ?? fallback.kategori
+    kategori: data.kategori ?? data.category ?? fallback.kategori,
+    moduleSheet: data.moduleSheet ?? data.module_sheet ?? fallback.moduleSheet ?? ""
   };
 
+  const backendResolution = data.moduleResolution && typeof data.moduleResolution === "object" ? data.moduleResolution : {};
   let modules = Array.isArray(data.modules) ? data.modules.map(module => enrichModule(module, merged.section, merged.basic)) : [];
-  if (!modules.length) modules = getExpectedModules(merged.section, merged.basic);
+  const localResolution = resolveExpectedModules(merged.section, merged.basic, merged.moduleSheet);
+  const mappingAmbiguous = backendResolution.status === "ambiguous" || (!modules.length && localResolution.status === "ambiguous");
+  if (!modules.length && !mappingAmbiguous) modules = localResolution.modules;
 
   detailNameEl.textContent = merged.nama || "Peserta";
-  const meta = [["NIK",merged.nik],["Section",merged.section],["Kategori",merged.kategori],["Current Level",merged.level],["Basic",merged.basic || "-"]]
+  const metaRows = [["NIK",merged.nik],["Section",merged.section],["Kategori",merged.kategori],["Current Level",merged.level],["Basic",merged.basic || "-"]];
+  if (merged.moduleSheet) metaRows.push(["Module Sheet", merged.moduleSheet]);
+  const meta = metaRows
     .map(([label,value]) => `<div class="meta-item"><span class="meta-label">${escapeHTML(label)}</span><span class="meta-value">${escapeHTML(value || "-")}</span></div>`).join("");
 
-  const metrics = getParticipantMetrics({ ...merged, nik: merged.nik }, modules);
+  const metrics = mappingAmbiguous
+    ? { modules: [], total: 0, completed: 0, percent: null, status: "Perlu Mapping" }
+    : getParticipantMetrics({ ...merged, nik: merged.nik }, modules);
   const records = progressIndex.get(merged.nik) || new Map();
   let tasksHTML = "";
   if (modules.length) {
     tasksHTML = `<div class="detail-task-list">${modules.map(task => detailTaskRow(task, merged, records)).join("")}</div>`;
+  } else if (mappingAmbiguous) {
+    const candidates = backendResolution.candidates?.length ? backendResolution.candidates : localResolution.candidates;
+    tasksHTML = `<div class="detail-error"><strong>Section belum cukup spesifik.</strong><br>Isi kolom Module Sheet / Sheet Modul. Kandidat: ${escapeHTML((candidates || []).join(", ") || "lebih dari satu sheet")}</div>`;
   } else if (apiFailed) {
     tasksHTML = `<div class="detail-error">Detail modul belum dapat diambil dari Apps Script dan tidak ditemukan pada katalog lokal.</div>`;
   } else {
@@ -409,7 +534,7 @@ function renderDetail(data, fallback, apiFailed = false) {
   detailContentEl.innerHTML = `
     <div class="detail-meta">${meta}</div>
     <div class="detail-progress-card">
-      <div><span class="meta-label">Progress</span><strong>${metrics.percent === null ? "Belum aktif" : `${metrics.completed}/${metrics.total} materi (${metrics.percent}%)`}</strong></div>
+      <div><span class="meta-label">Progress</span><strong>${metrics.status === "Perlu Mapping" ? "Perlu mapping sheet" : metrics.percent === null ? "Belum aktif" : `${metrics.completed}/${metrics.total} materi (${metrics.percent}%)`}</strong></div>
       ${statusChip(metrics.status)}
     </div>
     <div class="detail-assignment"><div><span class="meta-label">Yang harus dikerjakan</span><strong>${escapeHTML(merged.basic || "Belum ditentukan")}</strong></div><a class="journey-button" href="index.html?nik=${encodeURIComponent(merged.nik)}" target="_blank" rel="noopener">Buka sebagai peserta</a></div>
@@ -447,28 +572,43 @@ function exportCSV() {
   document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
 }
 
-function getExpectedModules(section, basic) {
+function getExpectedModules(section, basic, moduleSheet = "") {
+  return resolveExpectedModules(section, basic, moduleSheet).modules;
+}
+
+function resolveExpectedModules(section, basic, moduleSheet = "") {
   const sectionKey = normalizeSectionKey(section);
+  const hintKey = normalizeSectionKey(moduleSheet);
   const basicKeys = parseBasicAssignments(basic).map(normalizeTitle);
-  if (!basicKeys.length) return [];
+  if (!basicKeys.length) return { modules: [], status: "missing-basic", candidates: [] };
 
   const sameBasic = trainingCatalog.filter(item => basicKeys.includes(normalizeTitle(item.basic)));
-  let matched = sameBasic.filter(item => normalizeSectionKey(item.sheet) === sectionKey);
-  if (!matched.length) {
-    const scores = new Map();
-    sameBasic.forEach(item => {
-      const sheetKey = normalizeSectionKey(item.sheet); let score = 0;
-      if (sectionKey && sheetKey && (sheetKey.includes(sectionKey) || sectionKey.includes(sheetKey))) {
-        score = Math.min(sheetKey.length, sectionKey.length);
-      }
-      if (score > (scores.get(sheetKey) || 0)) scores.set(sheetKey, score);
-    });
-    const best = [...scores.entries()].sort((a,b) => b[1]-a[1])[0];
-    if (best && best[1] > 0) matched = sameBasic.filter(item => normalizeSectionKey(item.sheet) === best[0]);
+  const sheetKeys = [...new Set(sameBasic.map(item => normalizeSectionKey(item.sheet)).filter(Boolean))];
+  let selectedKey = "";
+
+  if (hintKey && sheetKeys.includes(hintKey)) selectedKey = hintKey;
+  if (!selectedKey && sectionKey && sheetKeys.includes(sectionKey)) selectedKey = sectionKey;
+
+  if (!selectedKey) {
+    const candidates = sheetKeys.filter(key => sectionKey && (key.includes(sectionKey) || sectionKey.includes(key)));
+    if (candidates.length === 1) selectedKey = candidates[0];
+    else if (candidates.length > 1) {
+      return {
+        modules: [],
+        status: "ambiguous",
+        candidates: sameBasic
+          .filter(item => candidates.includes(normalizeSectionKey(item.sheet)))
+          .map(item => item.sheet)
+          .filter((value,index,arr) => arr.indexOf(value) === index)
+      };
+    }
   }
 
+  if (!selectedKey) return { modules: [], status: "not-found", candidates: [] };
+
   const seen = new Set();
-  return matched
+  const modules = sameBasic
+    .filter(item => normalizeSectionKey(item.sheet) === selectedKey)
     .filter(item => {
       const key = `${normalizeTitle(item.basic)}::${normalizeTitle(item.title)}`;
       if (seen.has(key)) return false;
@@ -476,6 +616,8 @@ function getExpectedModules(section, basic) {
       return true;
     })
     .map(item => ({ title:item.title, postTest:item.postTest, moduleLink:item.moduleLink }));
+
+  return { modules, status: "resolved", candidates: [] };
 }
 
 function enrichModule(module, section, basic) {
@@ -490,8 +632,8 @@ function enrichModule(module, section, basic) {
 function buildCatalogIndex(catalog) { const map = new Map(); catalog.forEach(item => { const key=normalizeTitle(item.title); if(!map.has(key)) map.set(key,[]); map.get(key).push(item); }); return map; }
 function chooseCatalogMatch(matches, section, basic) {
   if (!matches.length) return null; if (matches.length===1) return matches[0];
-  const sectionKey=normalizeTitle(section), basicKey=normalizeTitle(basic);
-  return matches.map(item => { const sheetKey=normalizeTitle(item.sheet), itemBasic=normalizeTitle(item.basic); let score=0; if(basicKey&&itemBasic===basicKey)score+=5; if(sectionKey&&sheetKey===sectionKey)score+=5; if(sectionKey&&sheetKey.includes(sectionKey))score+=3; if(sectionKey&&sectionKey.includes(sheetKey))score+=2; return {item,score}; }).sort((a,b)=>b.score-a.score)[0].item;
+  const sectionKey=normalizeSectionKey(section), basicKeys=parseBasicAssignments(basic).map(normalizeTitle);
+  return matches.map(item => { const sheetKey=normalizeSectionKey(item.sheet), itemBasic=normalizeTitle(item.basic); let score=0; if(basicKeys.includes(itemBasic))score+=5; if(sectionKey&&sheetKey===sectionKey)score+=5; if(sectionKey&&sheetKey.includes(sectionKey))score+=3; if(sectionKey&&sectionKey.includes(sheetKey))score+=2; return {item,score}; }).sort((a,b)=>b.score-a.score)[0].item;
 }
 function createTaskKey(section,basic,title){ return `${normalizeTitle(section)}::${normalizeTitle(basic)}::${normalizeTitle(title)}`; }
 function formatDateTime(value){ const d=new Date(value); if(Number.isNaN(d.getTime())) return String(value||""); return new Intl.DateTimeFormat("id-ID",{dateStyle:"medium",timeStyle:"short"}).format(d); }

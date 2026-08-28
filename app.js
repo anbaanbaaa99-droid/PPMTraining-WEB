@@ -100,12 +100,15 @@ function renderJourney(data) {
   const level = data.level ?? data.currentLevel ?? data["Current Level"] ?? "-";
   const basic = data.basic ?? data.requiredBasic ?? data["Basic yang harus dikerjakan"] ?? "-";
   const category = data.kategori ?? data.category ?? "PPM";
+  const moduleSheet = data.moduleSheet ?? data.module_sheet ?? "";
+  const moduleResolution = data.moduleResolution && typeof data.moduleResolution === "object" ? data.moduleResolution : {};
+  const mappingAmbiguous = moduleResolution.status === "ambiguous";
 
   let modules = Array.isArray(data.modules) ? data.modules : [];
   modules = modules.map(module => enrichModule(module, section, basic));
-  if (!modules.length) modules = getCatalogAssignment(section, basic);
+  if (!modules.length && !mappingAmbiguous) modules = getCatalogAssignment(section, basic, moduleSheet);
 
-  activeParticipant = { nama, nik: String(nik), section, level, basic, kategori: category };
+  activeParticipant = { nama, nik: String(nik), section, level, basic, kategori: category, moduleSheet };
   activeModules = modules.map(module => ({
     ...module,
     taskKey: createTaskKey(section, basic, module.title)
@@ -113,9 +116,15 @@ function renderJourney(data) {
   activeProgress = new Map();
   progressBackendReady = false;
 
-  const rows = activeModules.length
-    ? activeModules.map(module => taskRow(module)).join("")
-    : `<div class="empty-state">Belum ada daftar materi yang ditemukan untuk peserta ini.</div>`;
+  const mappingWarning = mappingAmbiguous
+    ? `<div class="empty-state"><strong>Section belum cukup spesifik.</strong><br>Backend menemukan beberapa sheet: ${escapeHTML((moduleResolution.candidates || []).join(", "))}. Isi kolom <strong>Module Sheet</strong> / <strong>Sheet Modul</strong> pada Daftar Peserta agar materi tidak salah.</div>`
+    : "";
+
+  const rows = mappingAmbiguous
+    ? ""
+    : activeModules.length
+      ? activeModules.map(module => taskRow(module)).join("")
+      : `<div class="empty-state">Belum ada daftar materi yang ditemukan untuk peserta ini.</div>`;
 
   resultArea.innerHTML = `
     <article class="journey-card">
@@ -139,6 +148,7 @@ function renderJourney(data) {
         <h2>(<span class="basic-highlight">${escapeHTML(basic)}</span>)</h2>
       </div>
 
+      ${mappingWarning}
       ${activeModules.length ? `
       <section class="progress-panel" aria-label="Progress peserta">
         <div class="progress-copy">
@@ -238,7 +248,11 @@ async function handleProgressChange(event) {
       completed: String(desired),
       _: String(Date.now())
     });
-    const response = await fetch(`${API}?${params.toString()}`, { cache: "no-store" });
+    const response = await fetch(API, {
+      method: "POST",
+      body: params,
+      cache: "no-store"
+    });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!payload?.status || !payload?.data) throw new Error(payload?.message || "Progress gagal disimpan");
@@ -252,7 +266,7 @@ async function handleProgressChange(event) {
     console.error(error);
     checkbox.checked = !desired;
     if (String(activeParticipant?.nik || "") === participantNik) {
-      setStatus("Progress gagal disimpan. Coba lagi.", true);
+      setStatus(error?.message || "Progress gagal disimpan. Coba lagi.", true);
     }
   } finally {
     checkbox.disabled = false;
@@ -312,30 +326,46 @@ function actionLink(url, label, extraClass) {
   return `<a class="action-link ${extraClass}" href="${escapeAttribute(url)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
 }
 
-function getCatalogAssignment(section, basic) {
+function getCatalogAssignment(section, basic, moduleSheet = "") {
+  const resolution = resolveCatalogAssignment(section, basic, moduleSheet);
+  return resolution.modules;
+}
+
+function resolveCatalogAssignment(section, basic, moduleSheet = "") {
   const sectionKey = normalizeSectionKey(section);
+  const hintKey = normalizeSectionKey(moduleSheet);
   const basicKeys = parseBasicAssignments(basic).map(normalizeTitle);
-  if (!basicKeys.length) return [];
+  if (!basicKeys.length) return { modules: [], status: "missing-basic", candidates: [] };
 
   const sameBasic = catalog.filter(item => basicKeys.includes(normalizeTitle(item.basic)));
-  let matched = sameBasic.filter(item => normalizeSectionKey(item.sheet) === sectionKey);
+  const sheetKeys = [...new Set(sameBasic.map(item => normalizeSectionKey(item.sheet)).filter(Boolean))];
+  let selectedKey = "";
 
-  if (!matched.length) {
-    const scoredSheets = new Map();
-    sameBasic.forEach(item => {
-      const sheetKey = normalizeSectionKey(item.sheet);
-      let score = 0;
-      if (sectionKey && sheetKey && (sheetKey.includes(sectionKey) || sectionKey.includes(sheetKey))) {
-        score = Math.min(sheetKey.length, sectionKey.length);
-      }
-      if (score > (scoredSheets.get(sheetKey) || 0)) scoredSheets.set(sheetKey, score);
-    });
-    const bestSheet = [...scoredSheets.entries()].sort((a,b) => b[1] - a[1])[0];
-    if (bestSheet && bestSheet[1] > 0) matched = sameBasic.filter(item => normalizeSectionKey(item.sheet) === bestSheet[0]);
+  if (hintKey && sheetKeys.includes(hintKey)) selectedKey = hintKey;
+  if (!selectedKey && sectionKey && sheetKeys.includes(sectionKey)) selectedKey = sectionKey;
+
+  if (!selectedKey) {
+    const candidates = sheetKeys.filter(key =>
+      sectionKey && (key.includes(sectionKey) || sectionKey.includes(key))
+    );
+    if (candidates.length === 1) selectedKey = candidates[0];
+    else if (candidates.length > 1) {
+      return {
+        modules: [],
+        status: "ambiguous",
+        candidates: sameBasic
+          .filter(item => candidates.includes(normalizeSectionKey(item.sheet)))
+          .map(item => item.sheet)
+          .filter((value, index, arr) => arr.indexOf(value) === index)
+      };
+    }
   }
 
+  if (!selectedKey) return { modules: [], status: "not-found", candidates: [] };
+
   const seen = new Set();
-  return matched
+  const modules = sameBasic
+    .filter(item => normalizeSectionKey(item.sheet) === selectedKey)
     .filter(item => {
       const key = `${normalizeTitle(item.basic)}::${normalizeTitle(item.title)}`;
       if (seen.has(key)) return false;
@@ -343,6 +373,8 @@ function getCatalogAssignment(section, basic) {
       return true;
     })
     .map(item => ({ title: item.title, postTest: item.postTest, moduleLink: item.moduleLink }));
+
+  return { modules, status: "resolved", candidates: [] };
 }
 
 function enrichModule(module, section, basic) {
@@ -361,13 +393,13 @@ function enrichModule(module, section, basic) {
 function chooseCatalogMatch(matches, section, basic) {
   if (!matches.length) return null;
   if (matches.length === 1) return matches[0];
-  const sectionKey = normalizeTitle(section);
-  const basicKey = normalizeTitle(basic);
+  const sectionKey = normalizeSectionKey(section);
+  const basicKeys = parseBasicAssignments(basic).map(normalizeTitle);
   return matches.map(item => {
     let score = 0;
-    const sheetKey = normalizeTitle(item.sheet);
+    const sheetKey = normalizeSectionKey(item.sheet);
     const itemBasic = normalizeTitle(item.basic);
-    if (basicKey && itemBasic === basicKey) score += 5;
+    if (basicKeys.includes(itemBasic)) score += 5;
     if (sectionKey && sheetKey === sectionKey) score += 5;
     if (sectionKey && sheetKey.includes(sectionKey)) score += 3;
     if (sectionKey && sectionKey.includes(sheetKey)) score += 2;

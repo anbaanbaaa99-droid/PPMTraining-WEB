@@ -57,3 +57,6 @@ Lihat `backend/BACKEND-INSTALL.md` sebelum deploy.
 ## Catatan
 
 Login HR adalah autentikasi server-side untuk dashboard. Learning Journey peserta masih menggunakan endpoint peserta publik berbasis NIK, jadi ini belum merupakan sistem IAM/SSO penuh.
+
+## Catatan backend fixed
+Frontend versi ini paling aman dipakai bersama paket `PPMBackend-fixed`: `saveProgress` dikirim via POST dan assignment ambigu membutuhkan kolom opsional `Module Sheet` / `Sheet Modul` pada `Daftar Peserta`.
