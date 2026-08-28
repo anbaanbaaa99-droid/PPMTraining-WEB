@@ -21,6 +21,12 @@ searchInput.addEventListener("keydown", event => {
   if (event.key === "Enter") searchPPM();
 });
 
+const queryNIK = new URLSearchParams(window.location.search).get("nik");
+if (queryNIK) {
+  searchInput.value = queryNIK;
+  window.addEventListener("DOMContentLoaded", () => searchPPM(), { once: true });
+}
+
 async function loadParticipants() {
   try {
     const response = await fetch(`${API}?action=participants`);
