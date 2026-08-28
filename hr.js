@@ -140,7 +140,15 @@ async function loadHRParticipants() {
     if (payload?.code === "UNAUTHORIZED") handleUnauthorized();
     throw new Error(payload?.message || "Data peserta HR tidak tersedia.");
   }
-  return payload.data;
+  return payload.data.map(item => ({
+    ...item,
+    nik: String(item?.nik ?? "").trim(),
+    nama: String(item?.nama ?? "").trim(),
+    section: String(item?.section ?? "").trim(),
+    level: String(item?.level ?? "").trim(),
+    basic: String(item?.basic ?? "").trim(),
+    kategori: String(item?.kategori ?? "").trim() || "PPM"
+  }));
 }
 
 function initializeDashboard() {
@@ -272,8 +280,8 @@ function applyFilters() {
   return filtered;
 }
 
-function getParticipantMetrics(item) {
-  const modules = getExpectedModules(item.section, item.basic);
+function getParticipantMetrics(item, modulesOverride = null) {
+  const modules = Array.isArray(modulesOverride) ? modulesOverride : getExpectedModules(item.section, item.basic);
   const total = modules.length;
   if (!progressBackendReady) return { modules, total, completed: 0, percent: null, status: "Belum Aktif" };
 
@@ -387,7 +395,7 @@ function renderDetail(data, fallback, apiFailed = false) {
   const meta = [["NIK",merged.nik],["Section",merged.section],["Kategori",merged.kategori],["Current Level",merged.level],["Basic",merged.basic || "-"]]
     .map(([label,value]) => `<div class="meta-item"><span class="meta-label">${escapeHTML(label)}</span><span class="meta-value">${escapeHTML(value || "-")}</span></div>`).join("");
 
-  const metrics = getParticipantMetrics({ ...merged, nik: merged.nik });
+  const metrics = getParticipantMetrics({ ...merged, nik: merged.nik }, modules);
   const records = progressIndex.get(merged.nik) || new Map();
   let tasksHTML = "";
   if (modules.length) {
@@ -440,20 +448,34 @@ function exportCSV() {
 }
 
 function getExpectedModules(section, basic) {
-  const sectionKey = normalizeTitle(section); const basicKey = normalizeTitle(basic);
-  const sameBasic = trainingCatalog.filter(item => normalizeTitle(item.basic) === basicKey);
-  let matched = sameBasic.filter(item => normalizeTitle(item.sheet) === sectionKey);
+  const sectionKey = normalizeSectionKey(section);
+  const basicKeys = parseBasicAssignments(basic).map(normalizeTitle);
+  if (!basicKeys.length) return [];
+
+  const sameBasic = trainingCatalog.filter(item => basicKeys.includes(normalizeTitle(item.basic)));
+  let matched = sameBasic.filter(item => normalizeSectionKey(item.sheet) === sectionKey);
   if (!matched.length) {
     const scores = new Map();
     sameBasic.forEach(item => {
-      const sheetKey = normalizeTitle(item.sheet); let score = 0;
-      if (sectionKey && sheetKey && (sheetKey.includes(sectionKey) || sectionKey.includes(sheetKey))) score = Math.min(sheetKey.length, sectionKey.length);
+      const sheetKey = normalizeSectionKey(item.sheet); let score = 0;
+      if (sectionKey && sheetKey && (sheetKey.includes(sectionKey) || sectionKey.includes(sheetKey))) {
+        score = Math.min(sheetKey.length, sectionKey.length);
+      }
       if (score > (scores.get(sheetKey) || 0)) scores.set(sheetKey, score);
     });
     const best = [...scores.entries()].sort((a,b) => b[1]-a[1])[0];
-    if (best && best[1] > 0) matched = sameBasic.filter(item => normalizeTitle(item.sheet) === best[0]);
+    if (best && best[1] > 0) matched = sameBasic.filter(item => normalizeSectionKey(item.sheet) === best[0]);
   }
-  return matched.map(item => ({ title:item.title, postTest:item.postTest, moduleLink:item.moduleLink }));
+
+  const seen = new Set();
+  return matched
+    .filter(item => {
+      const key = `${normalizeTitle(item.basic)}::${normalizeTitle(item.title)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map(item => ({ title:item.title, postTest:item.postTest, moduleLink:item.moduleLink }));
 }
 
 function enrichModule(module, section, basic) {
@@ -480,6 +502,8 @@ function sortLevels(values){ const order=["Entry Level","OJT","Level 1","Level 2
 function sortBasics(values){ return values.sort((a,b)=>Number((a.match(/\d+/)||[999])[0])-Number((b.match(/\d+/)||[999])[0])); }
 function normalize(value){ return String(value??"").toLowerCase().trim().replace(/\s+/g," "); }
 function normalizeTitle(value){ return String(value??"").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g," ").trim().replace(/\s+/g," "); }
+function parseBasicAssignments(value){ const raw=String(value??"").trim(); if(!raw)return[]; if(/basic/i.test(raw)){const numbers=raw.match(/\d+/g)||[];if(numbers.length)return[...new Set(numbers.map(number=>`Basic ${number}`))];} return raw.split(/[,;/\n]+/).map(item=>item.trim()).filter(Boolean); }
+function normalizeSectionKey(value){ return normalizeTitle(String(value??"").replace(/&/g," and ")); }
 function safeURL(value){ const raw=String(value??"").trim(); if(!raw)return""; try{const url=new URL(raw);return["http:","https:"].includes(url.protocol)?url.href:"";}catch{return"";} }
 function escapeHTML(value){ return String(value??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;"); }
 function escapeAttribute(value){ return escapeHTML(value); }

@@ -13,6 +13,8 @@ let activeParticipant = null;
 let activeModules = [];
 let activeProgress = new Map();
 let progressBackendReady = false;
+let searchRequestId = 0;
+let progressRequestId = 0;
 
 for (const item of catalog) {
   const key = normalizeTitle(item.title);
@@ -61,6 +63,7 @@ async function searchPPM() {
     return;
   }
 
+  const requestId = ++searchRequestId;
   if (keyword.includes("-")) keyword = keyword.split("-").pop().trim();
 
   setLoading(true);
@@ -71,9 +74,10 @@ async function searchPPM() {
     const response = await fetch(`${API}?action=search&keyword=${encodeURIComponent(keyword)}`, { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
+    if (requestId !== searchRequestId) return;
 
     if (!payload?.status || !payload?.data) {
-      setStatus("Data peserta tidak ditemukan. Periksa kembali NIK atau nama.", true);
+      setStatus(payload?.message || "Data peserta tidak ditemukan. Periksa kembali NIK atau nama.", true);
       return;
     }
 
@@ -81,10 +85,11 @@ async function searchPPM() {
     setStatus("");
     requestAnimationFrame(() => resultArea.scrollIntoView({ behavior: "smooth", block: "start" }));
   } catch (error) {
+    if (requestId !== searchRequestId) return;
     console.error(error);
     setStatus("Data belum dapat dimuat. Periksa koneksi atau URL Web App Apps Script.", true);
   } finally {
-    setLoading(false);
+    if (requestId === searchRequestId) setLoading(false);
   }
 }
 
@@ -179,18 +184,22 @@ function taskRow(module) {
 }
 
 async function loadProgress(nik) {
+  const requestId = ++progressRequestId;
+  const participantNik = String(nik);
   const note = document.getElementById("participant-progress-note");
   try {
     const response = await fetch(`${API}?action=progress&nik=${encodeURIComponent(nik)}&_=${Date.now()}`, { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
-    if (!payload?.status || !Array.isArray(payload?.data?.items)) throw new Error("Endpoint progress belum tersedia");
+    if (!payload?.status || !Array.isArray(payload?.data?.items)) throw new Error(payload?.message || "Endpoint progress belum tersedia");
+    if (requestId !== progressRequestId || String(activeParticipant?.nik || "") !== participantNik) return;
 
     activeProgress = new Map(payload.data.items.map(item => [String(item.taskKey || ""), item]));
     progressBackendReady = true;
     syncParticipantProgressUI();
     bindProgressCheckboxes();
   } catch (error) {
+    if (requestId !== progressRequestId || String(activeParticipant?.nik || "") !== participantNik) return;
     console.warn("Progress backend belum aktif:", error);
     progressBackendReady = false;
     syncParticipantProgressUI();
@@ -213,6 +222,7 @@ async function handleProgressChange(event) {
   if (!module) return;
 
   const desired = checkbox.checked;
+  const participantNik = String(activeParticipant.nik);
   checkbox.disabled = true;
   setRowSaving(taskKey, true);
 
@@ -233,13 +243,17 @@ async function handleProgressChange(event) {
     const payload = await response.json();
     if (!payload?.status || !payload?.data) throw new Error(payload?.message || "Progress gagal disimpan");
 
-    activeProgress.set(taskKey, payload.data);
-    syncParticipantProgressUI();
-    flashStatus("Progress tersimpan.");
+    if (String(activeParticipant?.nik || "") === participantNik) {
+      activeProgress.set(taskKey, payload.data);
+      syncParticipantProgressUI();
+      flashStatus("Progress tersimpan.");
+    }
   } catch (error) {
     console.error(error);
     checkbox.checked = !desired;
-    setStatus("Progress gagal disimpan. Coba lagi.", true);
+    if (String(activeParticipant?.nik || "") === participantNik) {
+      setStatus("Progress gagal disimpan. Coba lagi.", true);
+    }
   } finally {
     checkbox.disabled = false;
     setRowSaving(taskKey, false);
@@ -299,24 +313,36 @@ function actionLink(url, label, extraClass) {
 }
 
 function getCatalogAssignment(section, basic) {
-  const sectionKey = normalizeTitle(section);
-  const basicKey = normalizeTitle(basic);
-  const sameBasic = catalog.filter(item => normalizeTitle(item.basic) === basicKey);
-  let matched = sameBasic.filter(item => normalizeTitle(item.sheet) === sectionKey);
+  const sectionKey = normalizeSectionKey(section);
+  const basicKeys = parseBasicAssignments(basic).map(normalizeTitle);
+  if (!basicKeys.length) return [];
+
+  const sameBasic = catalog.filter(item => basicKeys.includes(normalizeTitle(item.basic)));
+  let matched = sameBasic.filter(item => normalizeSectionKey(item.sheet) === sectionKey);
 
   if (!matched.length) {
     const scoredSheets = new Map();
     sameBasic.forEach(item => {
-      const sheetKey = normalizeTitle(item.sheet);
+      const sheetKey = normalizeSectionKey(item.sheet);
       let score = 0;
-      if (sectionKey && sheetKey && (sheetKey.includes(sectionKey) || sectionKey.includes(sheetKey))) score = Math.min(sheetKey.length, sectionKey.length);
+      if (sectionKey && sheetKey && (sheetKey.includes(sectionKey) || sectionKey.includes(sheetKey))) {
+        score = Math.min(sheetKey.length, sectionKey.length);
+      }
       if (score > (scoredSheets.get(sheetKey) || 0)) scoredSheets.set(sheetKey, score);
     });
     const bestSheet = [...scoredSheets.entries()].sort((a,b) => b[1] - a[1])[0];
-    if (bestSheet && bestSheet[1] > 0) matched = sameBasic.filter(item => normalizeTitle(item.sheet) === bestSheet[0]);
+    if (bestSheet && bestSheet[1] > 0) matched = sameBasic.filter(item => normalizeSectionKey(item.sheet) === bestSheet[0]);
   }
 
-  return matched.map(item => ({ title: item.title, postTest: item.postTest, moduleLink: item.moduleLink }));
+  const seen = new Set();
+  return matched
+    .filter(item => {
+      const key = `${normalizeTitle(item.basic)}::${normalizeTitle(item.title)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map(item => ({ title: item.title, postTest: item.postTest, moduleLink: item.moduleLink }));
 }
 
 function enrichModule(module, section, basic) {
@@ -363,6 +389,18 @@ function pick(object, keys) {
 }
 function normalizeTitle(value) {
   return String(value ?? "").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
+}
+function parseBasicAssignments(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return [];
+  if (/basic/i.test(raw)) {
+    const numbers = raw.match(/\d+/g) || [];
+    if (numbers.length) return [...new Set(numbers.map(number => `Basic ${number}`))];
+  }
+  return raw.split(/[,;/\n]+/).map(item => item.trim()).filter(Boolean);
+}
+function normalizeSectionKey(value) {
+  return normalizeTitle(String(value ?? "").replace(/&/g, " and "));
 }
 function normalizeURL(value) { return String(value ?? "").trim().replace(/\/$/, ""); }
 function safeURL(value) {
