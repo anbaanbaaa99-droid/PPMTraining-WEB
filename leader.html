@@ -1,33 +1,153 @@
 <!DOCTYPE html>
 <html>
+
 <head>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AEON PPM Leader Monitoring</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<link rel="stylesheet" href="leader.css">
+
+<meta name="viewport"
+content="width=device-width,initial-scale=1">
+
+<title>
+AEON PPM Leader Monitoring
+</title>
+
+
+<script src="
+https://cdn.jsdelivr.net/npm/chart.js">
+</script>
+
+
+<link rel="stylesheet"
+href="leader.css">
+
+
 </head>
+
+
 <body>
 
-<div class="card" id="login">
-<h2>Leader Login</h2>
-<input id="username" placeholder="Username">
-<input id="password" type="password" placeholder="Password">
-<button onclick="login()">Login</button>
+
+<div class="container">
+
+
+<header>
+
+<h1>
+AEON PPM
+</h1>
+
+<h2>
+Leader Monitoring
+</h2>
+
+<p id="section">
+</p>
+
+</header>
+
+
+
+<section class="summary">
+
+
+<div class="card">
+
+<span>
+Total Peserta
+</span>
+
+<h2 id="total">
+0
+</h2>
+
 </div>
 
-<div id="dashboard" class="hidden">
 
-<h1>Leader Monitoring</h1>
 
-<h3 id="section"></h3>
+<div class="card">
 
-<canvas id="chart"></canvas>
+<span>
+Completed
+</span>
 
-<div id="list"></div>
+<h2 id="completed">
+0
+</h2>
 
 </div>
+
+
+
+<div class="card">
+
+<span>
+Average Progress
+</span>
+
+<h2 id="average">
+0%
+</h2>
+
+</div>
+
+
+</section>
+
+
+
+
+
+<section class="dashboard">
+
+
+<div class="chart-box">
+
+
+<h3>
+Progress Team
+</h3>
+
+
+<div class="chart">
+
+<canvas id="chart">
+</canvas>
+
+</div>
+
+
+</div>
+
+
+
+
+<div class="list-box">
+
+
+<h3>
+Peserta
+</h3>
+
+
+<div id="list">
+
+</div>
+
+
+</div>
+
+
+</section>
+
+
+
+</div>
+
+
+
 
 <script src="leader.js"></script>
 
+
 </body>
+
 </html>
