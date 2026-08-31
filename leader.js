@@ -63,20 +63,64 @@ Progress ${p.percentage}%
 document.getElementById("list").innerHTML=html;
 
 
-new Chart(document.getElementById("chart"),{
+new Chart(
+document.getElementById("chart"),
+{
+
 type:"doughnut",
+
+
 data:{
-labels:["Progress","Sisa"],
+
+
+labels:[
+"Completed",
+"Remaining"
+],
+
+
 datasets:[{
+
 data:[
-Math.round(done/r.data.length),
-100-Math.round(done/r.data.length)
+
+progress,
+
+100-progress
+
 ]
+
+
 }]
+
+
+},
+
+
+options:{
+
+
+responsive:true,
+
+
+maintainAspectRatio:false,
+
+
+plugins:{
+
+
+legend:{
+
+
+position:"bottom"
+
+
 }
-});
 
-
-});
 
 }
+
+
+}
+
+
+});
