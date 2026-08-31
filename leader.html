@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AEON PPM Leader Monitoring</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link rel="stylesheet" href="leader.css">
+</head>
+<body>
+
+<div class="card" id="login">
+<h2>Leader Login</h2>
+<input id="username" placeholder="Username">
+<input id="password" type="password" placeholder="Password">
+<button onclick="login()">Login</button>
+</div>
+
+<div id="dashboard" class="hidden">
+
+<h1>Leader Monitoring</h1>
+
+<h3 id="section"></h3>
+
+<canvas id="chart"></canvas>
+
+<div id="list"></div>
+
+</div>
+
+<script src="leader.js"></script>
+
+</body>
+</html>
